@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Video Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            height: 100vh;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #mainVideo {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            background: #000;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 10;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .control-btn:hover,
+        .control-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.8);
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: rgba(255, 255, 255, 0.4);
+            border-color: rgba(255, 255, 255, 1);
+        }
+
+        @media (max-width: 480px) {
+            .controls {
+                bottom: 15px;
+                gap: 15px;
+            }
+
+            .control-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+
+        @media (max-height: 600px) {
+            .controls {
+                bottom: 10px;
+            }
+
+            .control-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <video id="mainVideo" muted playsinline preload="metadata" webkit-playsinline>
+            Your browser does not support the video tag.
+        </video>
+
+        <div class="controls">
+            <button class="control-btn" id="smileBtn">Smile</button>
+            <button class="control-btn" id="leftBtn">Left</button>
+            <button class="control-btn" id="rightBtn">Right</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('mainVideo');
+        const smileBtn = document.getElementById('smileBtn');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+
+        // Video paths - replace these with your actual video paths
+        const videos = {
+            smile: 'smile.mp4',
+            left: 'left.mp4',
+            right: 'right.mp4'
+        };
+
+        // Check if videos exist (for debugging)
+        function checkVideoExists(src) {
+            const video = document.createElement('video');
+            video.src = src;
+            video.addEventListener('loadstart', () => {
+                console.log('Video loading:', src);
+            });
+            video.addEventListener('error', () => {
+                console.error('Video not found:', src);
+            });
+        }
+
+        // Check all videos on load
+        Object.values(videos).forEach(checkVideoExists);
+
+        let currentVideo = null;
+
+        // Remove active class from all buttons
+        function clearActiveButtons() {
+            [smileBtn, leftBtn, rightBtn].forEach(btn => btn.classList.remove('active'));
+        }
+
+        // Play video and freeze at last frame
+        function playVideo(videoType, button) {
+            clearActiveButtons();
+            button.classList.add('active');
+
+            // For mobile browsers, we need to load the video first
+            video.src = videos[videoType];
+            video.load();
+            video.currentTime = 0;
+
+            // Add a small delay to ensure video is loaded on mobile
+            setTimeout(() => {
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        currentVideo = videoType;
+                    }).catch(err => {
+                        console.error('Error playing video:', err);
+                        // Fallback for autoplay restrictions
+                        video.muted = true;
+                        video.play();
+                    });
+                }
+            }, 100);
+        }
+
+        // Freeze video at last frame when it ends
+        video.addEventListener('ended', () => {
+            video.currentTime = video.duration;
+        });
+
+        // Prevent video controls
+        video.addEventListener('loadedmetadata', () => {
+            video.controls = false;
+        });
+
+        // Button event listeners - use both click and touchend for mobile
+        function addButtonListener(button, videoType) {
+            const handler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                playVideo(videoType, button);
+            };
+
+            button.addEventListener('click', handler);
+            button.addEventListener('touchend', handler);
+        }
+
+        addButtonListener(smileBtn, 'smile');
+        addButtonListener(leftBtn, 'left');
+        addButtonListener(rightBtn, 'right');
+
+        // Prevent video from showing controls on touch
+        video.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        });
+
+        video.addEventListener('click', (e) => {
+            e.preventDefault();
+        });
+
+        // Handle double tap to prevent zoom
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+
+        // Handle orientation changes and resize
+        function adjustVideoSize() {
+            video.style.width = '100vw';
+            video.style.height = '100vh';
+        }
+
+        window.addEventListener('orientationchange', () => {
+            setTimeout(adjustVideoSize, 100);
+        });
+
+        window.addEventListener('resize', adjustVideoSize);
+
+        // Initial size adjustment
+        window.addEventListener('load', () => {
+            adjustVideoSize();
+
+            // Force a reflow to ensure proper sizing on mobile
+            setTimeout(() => {
+                adjustVideoSize();
+            }, 500);
+        });
+
+        // Handle page visibility changes (mobile browsers)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                setTimeout(adjustVideoSize, 100);
+            }
+        });
+
+        // Prevent scrolling and zooming on mobile
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
+        });
+    </script>
+</body>
+</html>
