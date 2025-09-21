@@ -67,47 +67,29 @@
             flex: 1;
             position: relative;
             overflow: hidden;
+            /* ensure fully transparent in all states */
+            outline: none;
+            box-shadow: none;
         }
 
-        .control-btn:active::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255, 255, 255, 0.1);
-            animation: ripple 0.3s ease-out;
+        /* Remove any press/focus/hover visual effects */
+        .control-btn:active,
+        .control-btn:focus,
+        .control-btn:hover {
+            background: transparent !important;
+            outline: none !important;
+            box-shadow: none !important;
         }
 
-        @keyframes ripple {
-            from {
-                background: rgba(255, 255, 255, 0.2);
-            }
-            to {
-                background: transparent;
-            }
+        /* Accessibility helper: no visible text but keep labels for screen readers */
+        .visually-hidden {
+            position: absolute !important;
+            height: 1px; width: 1px;
+            overflow: hidden;
+            clip: rect(1px, 1px, 1px, 1px);
+            white-space: nowrap;
         }
 
-        .button-label {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-size: 14px;
-            font-weight: bold;
-            text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-            pointer-events: none;
-            opacity: 0.7;
-        }
-
-        #smileBtn .button-label {
-            bottom: auto;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 18px;
-        }
     </style>
 </head>
 <body>
@@ -118,16 +100,16 @@
 
         <div class="controls">
             <div class="control-top">
-                <button class="control-btn" id="smileBtn">
-                    <span class="button-label">Smile</span>
+                <button class="control-btn" id="smileBtn" aria-label="smile">
+                    <!-- label removed to make button visually empty -->
                 </button>
             </div>
             <div class="control-bottom">
-                <button class="control-btn" id="leftBtn">
-                    <span class="button-label">Left</span>
+                <button class="control-btn" id="leftBtn" aria-label="left">
+                    <!-- label removed to make button visually empty -->
                 </button>
-                <button class="control-btn" id="rightBtn">
-                    <span class="button-label">Right</span>
+                <button class="control-btn" id="rightBtn" aria-label="right">
+                    <!-- label removed to make button visually empty -->
                 </button>
             </div>
         </div>
@@ -148,15 +130,8 @@
 
         let currentVideo = null;
 
-        // Remove active class from all buttons (optional, since buttons are transparent)
-        function clearActiveButtons() {
-            // Not needed for transparent buttons, kept for potential future use
-        }
-
         // Play video and freeze at last frame
         function playVideo(videoType, button) {
-            clearActiveButtons();
-
             video.src = videos[videoType];
             video.load();
 
