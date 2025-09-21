@@ -5,171 +5,189 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Video Player</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { height: 100vh; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+        .video-container { position: relative; width: 100vw; height: 100vh; }
 
-        body {
-            height: 100vh;
-            overflow: hidden;
-            background: #000;
-            font-family: Arial, sans-serif;
-        }
-
-        .video-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
-
-        #mainVideo {
-            width: 100vw;
-            height: 100vh;
+        /* Two stacked videos for smooth switching */
+        video.video-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
             object-fit: cover;
             background: #000;
-            position: absolute;
-            top: 0;
-            left: 0;
+            transition: opacity 160ms linear; /* quick crossfade when swapping */
+            will-change: opacity;
         }
+
+        /* buffer (background) is under main (visible) */
+        #mainVideo { z-index: 5; opacity: 1; }
+        #bufferVideo { z-index: 4; opacity: 0; pointer-events: none; }
 
         .controls {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 10;
-            display: grid;
-            grid-template-rows: 1fr 1fr;
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10;
+            display: grid; grid-template-rows: 1fr 1fr;
         }
-
-        .control-top {
-            grid-row: 1;
-            display: flex;
-            width: 100%;
-        }
-
-        .control-bottom {
-            grid-row: 2;
-            display: flex;
-            width: 100%;
-        }
+        .control-top { grid-row: 1; display: flex; width: 100%; }
+        .control-bottom { grid-row: 2; display: flex; width: 100%; }
 
         .control-btn {
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            touch-action: manipulation;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-            flex: 1;
-            position: relative;
-            overflow: hidden;
-            /* ensure fully transparent in all states */
-            outline: none;
-            box-shadow: none;
+            background: transparent; border: none; cursor: pointer; touch-action: manipulation;
+            user-select: none; -webkit-tap-highlight-color: transparent; flex: 1; position: relative; overflow: hidden;
+            outline: none; box-shadow: none;
         }
+        .control-btn:active, .control-btn:focus, .control-btn:hover { background: transparent !important; outline: none !important; box-shadow: none !important; }
 
-        /* Remove any press/focus/hover visual effects */
-        .control-btn:active,
-        .control-btn:focus,
-        .control-btn:hover {
-            background: transparent !important;
-            outline: none !important;
-            box-shadow: none !important;
-        }
-
-        /* Accessibility helper: no visible text but keep labels for screen readers */
-        .visually-hidden {
-            position: absolute !important;
-            height: 1px; width: 1px;
-            overflow: hidden;
-            clip: rect(1px, 1px, 1px, 1px);
-            white-space: nowrap;
-        }
-
+        /* Keep accessible names but hide visually */
+        .visually-hidden { position: absolute !important; height: 1px; width: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); white-space: nowrap; }
     </style>
 </head>
 <body>
     <div class="video-container">
-        <video id="mainVideo" muted playsinline preload="metadata" webkit-playsinline>
-            Your browser does not support the video tag.
-        </video>
+        <!-- mainVideo shows the current visible frame. bufferVideo preloads the next clip underneath. -->
+        <video id="mainVideo" class="video-layer" muted playsinline preload="auto" webkit-playsinline></video>
+        <video id="bufferVideo" class="video-layer" muted playsinline preload="auto" webkit-playsinline></video>
 
         <div class="controls">
             <div class="control-top">
-                <button class="control-btn" id="smileBtn" aria-label="smile">
-                    <!-- label removed to make button visually empty -->
-                </button>
+                <button class="control-btn" id="smileBtn" aria-label="smile"></button>
             </div>
             <div class="control-bottom">
-                <button class="control-btn" id="leftBtn" aria-label="left">
-                    <!-- label removed to make button visually empty -->
-                </button>
-                <button class="control-btn" id="rightBtn" aria-label="right">
-                    <!-- label removed to make button visually empty -->
-                </button>
+                <button class="control-btn" id="leftBtn" aria-label="left"></button>
+                <button class="control-btn" id="rightBtn" aria-label="right"></button>
             </div>
         </div>
     </div>
 
     <script>
-        const video = document.getElementById('mainVideo');
+        // Elements
+        let mainEl = document.getElementById('mainVideo');
+        let bufferEl = document.getElementById('bufferVideo');
         const smileBtn = document.getElementById('smileBtn');
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
 
-        // Video paths - replace these with your actual video paths
-        const videos = {
-            smile: 'smile.mp4',
-            left: 'left.mp4',
-            right: 'right.mp4'
-        };
+        // Video paths
+        const videos = { smile: 'smile.mp4', left: 'left.mp4', right: 'right.mp4' };
 
-        let currentVideo = null;
+        // Keep track of currently visible type
+        let currentVideoType = null;
+        let loading = false; // prevent double loads
 
-        // Play video and freeze at last frame
-        function playVideo(videoType, button) {
-            video.src = videos[videoType];
-            video.load();
-
-            video.addEventListener('canplay', function onCanPlay() {
-                video.removeEventListener('canplay', onCanPlay);
-                video.currentTime = 0;
-
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        currentVideo = videoType;
-                    }).catch(err => {
-                        console.error('Error playing video:', err);
-                        video.muted = true;
-                        video.play();
-                    });
-                }
-            });
+        // Ensure both videos follow same muted state
+        function syncMuted() {
+            bufferEl.muted = mainEl.muted;
         }
 
-        // Freeze video at last frame when it ends
-        video.addEventListener('ended', () => {
-            video.currentTime = video.duration - 0.1;
-        });
+        // Freeze a video on its last frame (useful when paused)
+        function freezeAtLastFrame(v) {
+            try {
+                if (v.duration && isFinite(v.duration) && v.duration > 0) {
+                    v.currentTime = Math.max(0, v.duration - 0.1);
+                    v.pause();
+                } else {
+                    v.pause();
+                }
+            } catch (e) {
+                // some browsers may throw when seeking near end; fallback to pause
+                v.pause();
+            }
+        }
 
-        // Prevent video controls
-        video.addEventListener('loadedmetadata', () => {
-            video.controls = false;
-        });
+        // Smoothly switch to a new video: preload in bufferEl, keep mainEl visible until buffer is ready
+        function playVideoSmooth(videoType) {
+            if (loading) return; // simple debounce
+            if (videoType === currentVideoType) return; // already playing
 
-        // Button event listeners
+            loading = true;
+            syncMuted();
+
+            // keep the currently visible mainEl as-is so its last frame remains visible
+            // load new source into bufferEl (the hidden layer)
+            bufferEl.src = videos[videoType];
+            bufferEl.load();
+
+            // If buffer is already the same src and ready, skip waiting
+            const onCanPlay = function () {
+                bufferEl.removeEventListener('canplay', onCanPlay);
+                bufferEl.removeEventListener('error', onError);
+
+                // try to play buffer silently (must be muted for autoplay to work reliably)
+                const playPromise = bufferEl.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        // crossfade quickly: show buffer, hide main
+                        bufferEl.style.opacity = '1';
+                        mainEl.style.opacity = '0';
+
+                        // pause and freeze the old main (so its last frame is preserved if needed later)
+                        freezeAtLastFrame(mainEl);
+
+                        // swap references so the new visible element becomes mainEl
+                        const oldMain = mainEl;
+                        mainEl = bufferEl;
+                        bufferEl = oldMain;
+
+                        // ensure the now-buffer (old main) is hidden under the new main
+                        bufferEl.style.opacity = '0';
+
+                        currentVideoType = videoType;
+                        loading = false;
+                    }).catch(err => {
+                        console.warn('Autoplay prevented or playback error on buffer:', err);
+                        // If playback failed, keep showing the last frame of mainEl and don't swap
+                        loading = false;
+                    });
+                } else {
+                    // older browsers: assume play succeeded
+                    bufferEl.style.opacity = '1';
+                    mainEl.style.opacity = '0';
+                    freezeAtLastFrame(mainEl);
+                    const oldMain = mainEl;
+                    mainEl = bufferEl;
+                    bufferEl = oldMain;
+                    bufferEl.style.opacity = '0';
+                    currentVideoType = videoType;
+                    loading = false;
+                }
+            };
+
+            const onError = function (e) {
+                bufferEl.removeEventListener('canplay', onCanPlay);
+                bufferEl.removeEventListener('error', onError);
+                console.error('Error loading buffer video', e);
+                // loading failed — keep showing mainEl's frame
+                loading = false;
+            };
+
+            bufferEl.addEventListener('canplay', onCanPlay);
+            bufferEl.addEventListener('error', onError);
+
+            // Safety: if canplay doesn't fire within X ms, give up and keep main frame
+            const timeout = setTimeout(() => {
+                bufferEl.removeEventListener('canplay', onCanPlay);
+                bufferEl.removeEventListener('error', onError);
+                console.warn('Buffer load timeout — keeping current frame');
+                loading = false;
+                clearTimeout(timeout);
+            }, 8000);
+        }
+
+        // Freeze visible video on ended
+        function onEndedHandler() {
+            freezeAtLastFrame(mainEl);
+        }
+
+        mainEl.addEventListener('ended', onEndedHandler);
+        bufferEl.addEventListener('ended', onEndedHandler);
+
+        // Button wiring
         function addButtonListener(button, videoType) {
             const handler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                playVideo(videoType, button);
+                playVideoSmooth(videoType);
             };
-
             button.addEventListener('click', handler);
             button.addEventListener('touchend', handler);
         }
@@ -178,58 +196,38 @@
         addButtonListener(leftBtn, 'left');
         addButtonListener(rightBtn, 'right');
 
-        // Prevent video from showing controls on touch
-        video.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-        });
+        // Prevent gestures that might interfere
+        videoPreventInteractions();
 
-        video.addEventListener('click', (e) => {
-            e.preventDefault();
-        });
+        function videoPreventInteractions() {
+            mainEl.addEventListener('touchstart', (e) => e.preventDefault());
+            bufferEl.addEventListener('touchstart', (e) => e.preventDefault());
 
-        // Handle double tap to prevent zoom
-        let lastTouchEnd = 0;
-        document.addEventListener('touchend', function (event) {
-            const now = (new Date()).getTime();
-            if (now - lastTouchEnd <= 300) {
-                event.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, false);
+            mainEl.addEventListener('click', (e) => e.preventDefault());
+            bufferEl.addEventListener('click', (e) => e.preventDefault());
 
-        // Handle orientation changes and resize
-        function adjustVideoSize() {
-            video.style.width = '100vw';
-            video.style.height = '100vh';
+            document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+            document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+            // Prevent double-tap zoom
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', function (event) {
+                const now = (new Date()).getTime();
+                if (now - lastTouchEnd <= 300) { event.preventDefault(); }
+                lastTouchEnd = now;
+            }, false);
         }
 
-        window.addEventListener('orientationchange', () => {
-            setTimeout(adjustVideoSize, 100);
-        });
-
+        // Initial adjust
+        function adjustVideoSize() { mainEl.style.width = bufferEl.style.width = '100vw'; mainEl.style.height = bufferEl.style.height = '100vh'; }
+        window.addEventListener('orientationchange', () => setTimeout(adjustVideoSize, 100));
         window.addEventListener('resize', adjustVideoSize);
+        window.addEventListener('load', () => { adjustVideoSize(); setTimeout(adjustVideoSize, 500); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(adjustVideoSize, 100); });
 
-        // Initial size adjustment
-        window.addEventListener('load', () => {
-            adjustVideoSize();
-            setTimeout(adjustVideoSize, 500);
-        });
-
-        // Handle page visibility changes
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                setTimeout(adjustVideoSize, 100);
-            }
-        });
-
-        // Prevent scrolling and zooming on mobile
-        document.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('gesturestart', (e) => {
-            e.preventDefault();
-        });
+        // Start with a default video (optional) to have a frame visible — you can remove or change this
+        // If you want nothing initially, comment the next line.
+        // playVideoSmooth('smile');
     </script>
 </body>
 </html>
