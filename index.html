@@ -16,7 +16,6 @@
             overflow: hidden;
             background: #000;
             font-family: Arial, sans-serif;
-            position: relative;
         }
 
         .video-container {
@@ -25,7 +24,7 @@
             height: 100vh;
         }
 
-        #mainVideo {
+        .video-layer {
             width: 100vw;
             height: 100vh;
             object-fit: cover;
@@ -33,107 +32,103 @@
             position: absolute;
             top: 0;
             left: 0;
-            z-index: 1;
+            transition: opacity 0.3s ease;
         }
 
-        /* Invisible touch zones */
-        .touch-zone {
+        #mainVideo {
+            z-index: 2;
+            opacity: 1;
+        }
+
+        #bufferVideo {
+            z-index: 1;
+            opacity: 0;
+        }
+
+        .controls {
             position: absolute;
-            background: transparent;
-            border: none;
-            outline: none;
-            cursor: pointer;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
             z-index: 10;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+            user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* Top zone for smile - 50% of screen */
-        .touch-zone.smile {
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 50vh;
+        .control-btn:hover,
+        .control-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.8);
+            transform: scale(1.05);
         }
 
-        /* Bottom left zone for left - 25% of screen */
-        .touch-zone.left {
-            bottom: 0;
-            left: 0;
-            width: 50vw;
-            height: 50vh;
+        .control-btn.active {
+            background: rgba(255, 255, 255, 0.4);
+            border-color: rgba(255, 255, 255, 1);
         }
 
-        /* Bottom right zone for right - 25% of screen */
-        .touch-zone.right {
-            bottom: 0;
-            right: 0;
-            width: 50vw;
-            height: 50vh;
-        }
-
-        /* Visual feedback on touch/click */
-        .touch-zone:active {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        /* Optional: Show zone borders for debugging - remove this in production */
-        .debug-mode .touch-zone {
-            border: 1px dashed rgba(255, 255, 255, 0.2);
-        }
-
-        /* Subtle indicator that appears briefly when video changes */
-        .video-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            opacity: 0;
-            pointer-events: none;
-            z-index: 20;
-            transition: opacity 0.3s ease;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-        }
-
-        .video-indicator.show {
-            opacity: 0.8;
-        }
-
-        @media (orientation: landscape) {
-            /* Adjust zones for landscape if needed */
-            .touch-zone.smile {
-                height: 50vh;
+        @media (max-width: 480px) {
+            .controls {
+                bottom: 15px;
+                gap: 15px;
             }
-            .touch-zone.left,
-            .touch-zone.right {
-                height: 50vh;
+
+            .control-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+
+        @media (max-height: 600px) {
+            .controls {
+                bottom: 10px;
+            }
+
+            .control-btn {
+                padding: 8px 16px;
+                font-size: 12px;
             }
         }
     </style>
 </head>
 <body>
     <div class="video-container">
-        <video id="mainVideo" muted playsinline preload="metadata" webkit-playsinline>
+        <video id="bufferVideo" class="video-layer" muted playsinline preload="metadata" webkit-playsinline>
+            Your browser does not support the video tag.
+        </video>
+        <video id="mainVideo" class="video-layer" muted playsinline preload="metadata" webkit-playsinline>
             Your browser does not support the video tag.
         </video>
 
-        <!-- Invisible touch zones -->
-        <button class="touch-zone smile" id="smileBtn" aria-label="Smile"></button>
-        <button class="touch-zone left" id="leftBtn" aria-label="Left"></button>
-        <button class="touch-zone right" id="rightBtn" aria-label="Right"></button>
-
-        <!-- Video indicator -->
-        <div class="video-indicator" id="indicator"></div>
+        <div class="controls">
+            <button class="control-btn" id="smileBtn">Smile</button>
+            <button class="control-btn" id="leftBtn">Left</button>
+            <button class="control-btn" id="rightBtn">Right</button>
+        </div>
     </div>
 
     <script>
-        const video = document.getElementById('mainVideo');
+        const mainVideo = document.getElementById('mainVideo');
+        const bufferVideo = document.getElementById('bufferVideo');
         const smileBtn = document.getElementById('smileBtn');
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
-        const indicator = document.getElementById('indicator');
 
         // Video paths - replace these with your actual video paths
         const videos = {
@@ -143,60 +138,103 @@
         };
 
         let currentVideo = null;
-        let indicatorTimeout = null;
+        let currentVideoElement = mainVideo;
+        let bufferVideoElement = bufferVideo;
+        let isTransitioning = false;
 
-        // Show indicator briefly
-        function showIndicator(text) {
-            if (indicatorTimeout) {
-                clearTimeout(indicatorTimeout);
-            }
-            indicator.textContent = text;
-            indicator.classList.add('show');
-
-            indicatorTimeout = setTimeout(() => {
-                indicator.classList.remove('show');
-            }, 1000);
+        // Remove active class from all buttons
+        function clearActiveButtons() {
+            [smileBtn, leftBtn, rightBtn].forEach(btn => btn.classList.remove('active'));
         }
 
-        // Play video and freeze at last frame
-        function playVideo(videoType) {
-            // Show indicator
-            const labels = {
-                smile: '😊',
-                left: '←',
-                right: '→'
-            };
-            showIndicator(labels[videoType] || videoType.toUpperCase());
+        // Swap video elements
+        function swapVideoElements() {
+            const temp = currentVideoElement;
+            currentVideoElement = bufferVideoElement;
+            bufferVideoElement = temp;
+        }
 
-            // Load and play video
-            video.src = videos[videoType];
-            video.load();
-            video.currentTime = 0;
+        // Play video with smooth transition
+        function playVideo(videoType, button) {
+            if (isTransitioning) return;
 
-            // Add a small delay to ensure video is loaded on mobile
-            setTimeout(() => {
-                const playPromise = video.play();
+            clearActiveButtons();
+            button.classList.add('active');
+
+            // If it's the first video or same video being replayed
+            if (!currentVideo || currentVideo === videoType) {
+                currentVideoElement.src = videos[videoType];
+                currentVideoElement.load();
+
+                currentVideoElement.addEventListener('canplay', function onCanPlay() {
+                    currentVideoElement.removeEventListener('canplay', onCanPlay);
+                    currentVideoElement.currentTime = 0;
+                    currentVideoElement.play().catch(err => {
+                        console.error('Error playing video:', err);
+                        currentVideoElement.muted = true;
+                        currentVideoElement.play();
+                    });
+                });
+
+                currentVideo = videoType;
+                return;
+            }
+
+            // Transition to new video
+            isTransitioning = true;
+
+            // Load new video in buffer
+            bufferVideoElement.src = videos[videoType];
+            bufferVideoElement.load();
+
+            bufferVideoElement.addEventListener('canplay', function onCanPlay() {
+                bufferVideoElement.removeEventListener('canplay', onCanPlay);
+
+                // Start playing the buffer video
+                bufferVideoElement.currentTime = 0;
+                const playPromise = bufferVideoElement.play();
+
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
-                        currentVideo = videoType;
+                        // Fade transition
+                        currentVideoElement.style.opacity = '0';
+                        bufferVideoElement.style.opacity = '1';
+
+                        // Swap z-index
+                        currentVideoElement.style.zIndex = '1';
+                        bufferVideoElement.style.zIndex = '2';
+
+                        // After transition completes, swap references
+                        setTimeout(() => {
+                            swapVideoElements();
+                            currentVideo = videoType;
+                            isTransitioning = false;
+                        }, 300);
                     }).catch(err => {
                         console.error('Error playing video:', err);
-                        // Fallback for autoplay restrictions
-                        video.muted = true;
-                        video.play();
+                        bufferVideoElement.muted = true;
+                        bufferVideoElement.play();
                     });
                 }
-            }, 100);
+            });
         }
 
         // Freeze video at last frame when it ends
-        video.addEventListener('ended', () => {
-            video.currentTime = video.duration;
+        mainVideo.addEventListener('ended', () => {
+            mainVideo.currentTime = mainVideo.duration - 0.1;
+        });
+
+        bufferVideo.addEventListener('ended', () => {
+            bufferVideo.currentTime = bufferVideo.duration - 0.1;
         });
 
         // Prevent video controls
-        video.addEventListener('loadedmetadata', () => {
-            video.controls = false;
+        mainVideo.addEventListener('loadedmetadata', () => {
+            mainVideo.controls = false;
+        });
+
+        bufferVideo.addEventListener('loadedmetadata', () => {
+            bufferVideo.controls = false;
         });
 
         // Button event listeners - use both click and touchend for mobile
@@ -204,7 +242,7 @@
             const handler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                playVideo(videoType);
+                playVideo(videoType, button);
             };
 
             button.addEventListener('click', handler);
@@ -216,12 +254,14 @@
         addButtonListener(rightBtn, 'right');
 
         // Prevent video from showing controls on touch
-        video.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-        });
+        [mainVideo, bufferVideo].forEach(video => {
+            video.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+            });
 
-        video.addEventListener('click', (e) => {
-            e.preventDefault();
+            video.addEventListener('click', (e) => {
+                e.preventDefault();
+            });
         });
 
         // Handle double tap to prevent zoom
@@ -234,25 +274,12 @@
             lastTouchEnd = now;
         }, false);
 
-        // Check if videos exist (for debugging)
-        function checkVideoExists(src) {
-            const video = document.createElement('video');
-            video.src = src;
-            video.addEventListener('loadstart', () => {
-                console.log('Video loading:', src);
-            });
-            video.addEventListener('error', () => {
-                console.error('Video not found:', src);
-            });
-        }
-
-        // Check all videos on load
-        Object.values(videos).forEach(checkVideoExists);
-
         // Handle orientation changes and resize
         function adjustVideoSize() {
-            video.style.width = '100vw';
-            video.style.height = '100vh';
+            [mainVideo, bufferVideo].forEach(video => {
+                video.style.width = '100vw';
+                video.style.height = '100vh';
+            });
         }
 
         window.addEventListener('orientationchange', () => {
@@ -269,11 +296,6 @@
             setTimeout(() => {
                 adjustVideoSize();
             }, 500);
-
-            // Add debug mode if URL contains ?debug
-            if (window.location.search.includes('debug')) {
-                document.body.classList.add('debug-mode');
-            }
         });
 
         // Handle page visibility changes (mobile browsers)
