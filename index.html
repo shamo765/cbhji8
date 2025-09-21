@@ -16,7 +16,6 @@
             overflow: hidden;
             background: #000;
             font-family: Arial, sans-serif;
-            position: relative;
         }
 
         .video-container {
@@ -33,83 +32,81 @@
             position: absolute;
             top: 0;
             left: 0;
-            z-index: 1;
         }
 
-        /* Invisible touch zones */
-        .touch-zone {
+        .controls {
             position: absolute;
-            background: transparent;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            z-index: 10;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        /* Top zone for smile - 50% of screen */
-        .touch-zone.smile {
             top: 0;
             left: 0;
             width: 100vw;
-            height: 50vh;
+            height: 100vh;
+            z-index: 10;
+            display: grid;
+            grid-template-rows: 1fr 1fr;
         }
 
-        /* Bottom left zone for left - 25% of screen */
-        .touch-zone.left {
-            bottom: 0;
-            left: 0;
-            width: 50vw;
-            height: 50vh;
+        .control-top {
+            grid-row: 1;
+            display: flex;
+            width: 100%;
         }
 
-        /* Bottom right zone for right - 25% of screen */
-        .touch-zone.right {
-            bottom: 0;
-            right: 0;
-            width: 50vw;
-            height: 50vh;
+        .control-bottom {
+            grid-row: 2;
+            display: flex;
+            width: 100%;
         }
 
-        /* Visual feedback on touch/click */
-        .touch-zone:active {
-            background: rgba(255, 255, 255, 0.1);
+        .control-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
         }
 
-        /* Optional: Show zone borders for debugging - remove this in production */
-        .debug-mode .touch-zone {
-            border: 1px dashed rgba(255, 255, 255, 0.2);
-        }
-
-        /* Subtle indicator that appears briefly when video changes */
-        .video-indicator {
+        .control-btn:active::after {
+            content: '';
             position: absolute;
-            top: 50%;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.1);
+            animation: ripple 0.3s ease-out;
+        }
+
+        @keyframes ripple {
+            from {
+                background: rgba(255, 255, 255, 0.2);
+            }
+            to {
+                background: transparent;
+            }
+        }
+
+        .button-label {
+            position: absolute;
+            bottom: 20px;
             left: 50%;
-            transform: translate(-50%, -50%);
+            transform: translateX(-50%);
             color: white;
-            font-size: 24px;
+            font-size: 14px;
             font-weight: bold;
-            opacity: 0;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
             pointer-events: none;
-            z-index: 20;
-            transition: opacity 0.3s ease;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            opacity: 0.7;
         }
 
-        .video-indicator.show {
-            opacity: 0.8;
-        }
-
-        @media (orientation: landscape) {
-            /* Adjust zones for landscape if needed */
-            .touch-zone.smile {
-                height: 50vh;
-            }
-            .touch-zone.left,
-            .touch-zone.right {
-                height: 50vh;
-            }
+        #smileBtn .button-label {
+            bottom: auto;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
         }
     </style>
 </head>
@@ -119,13 +116,21 @@
             Your browser does not support the video tag.
         </video>
 
-        <!-- Invisible touch zones -->
-        <button class="touch-zone smile" id="smileBtn" aria-label="Smile"></button>
-        <button class="touch-zone left" id="leftBtn" aria-label="Left"></button>
-        <button class="touch-zone right" id="rightBtn" aria-label="Right"></button>
-
-        <!-- Video indicator -->
-        <div class="video-indicator" id="indicator"></div>
+        <div class="controls">
+            <div class="control-top">
+                <button class="control-btn" id="smileBtn">
+                    <span class="button-label">Smile</span>
+                </button>
+            </div>
+            <div class="control-bottom">
+                <button class="control-btn" id="leftBtn">
+                    <span class="button-label">Left</span>
+                </button>
+                <button class="control-btn" id="rightBtn">
+                    <span class="button-label">Right</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -133,7 +138,6 @@
         const smileBtn = document.getElementById('smileBtn');
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
-        const indicator = document.getElementById('indicator');
 
         // Video paths - replace these with your actual video paths
         const videos = {
@@ -143,55 +147,39 @@
         };
 
         let currentVideo = null;
-        let indicatorTimeout = null;
 
-        // Show indicator briefly
-        function showIndicator(text) {
-            if (indicatorTimeout) {
-                clearTimeout(indicatorTimeout);
-            }
-            indicator.textContent = text;
-            indicator.classList.add('show');
-
-            indicatorTimeout = setTimeout(() => {
-                indicator.classList.remove('show');
-            }, 1000);
+        // Remove active class from all buttons (optional, since buttons are transparent)
+        function clearActiveButtons() {
+            // Not needed for transparent buttons, kept for potential future use
         }
 
         // Play video and freeze at last frame
-        function playVideo(videoType) {
-            // Show indicator
-            const labels = {
-                smile: '😊',
-                left: '←',
-                right: '→'
-            };
-            showIndicator(labels[videoType] || videoType.toUpperCase());
+        function playVideo(videoType, button) {
+            clearActiveButtons();
 
-            // Load and play video
             video.src = videos[videoType];
             video.load();
-            video.currentTime = 0;
 
-            // Add a small delay to ensure video is loaded on mobile
-            setTimeout(() => {
+            video.addEventListener('canplay', function onCanPlay() {
+                video.removeEventListener('canplay', onCanPlay);
+                video.currentTime = 0;
+
                 const playPromise = video.play();
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         currentVideo = videoType;
                     }).catch(err => {
                         console.error('Error playing video:', err);
-                        // Fallback for autoplay restrictions
                         video.muted = true;
                         video.play();
                     });
                 }
-            }, 100);
+            });
         }
 
         // Freeze video at last frame when it ends
         video.addEventListener('ended', () => {
-            video.currentTime = video.duration;
+            video.currentTime = video.duration - 0.1;
         });
 
         // Prevent video controls
@@ -199,12 +187,12 @@
             video.controls = false;
         });
 
-        // Button event listeners - use both click and touchend for mobile
+        // Button event listeners
         function addButtonListener(button, videoType) {
             const handler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                playVideo(videoType);
+                playVideo(videoType, button);
             };
 
             button.addEventListener('click', handler);
@@ -234,21 +222,6 @@
             lastTouchEnd = now;
         }, false);
 
-        // Check if videos exist (for debugging)
-        function checkVideoExists(src) {
-            const video = document.createElement('video');
-            video.src = src;
-            video.addEventListener('loadstart', () => {
-                console.log('Video loading:', src);
-            });
-            video.addEventListener('error', () => {
-                console.error('Video not found:', src);
-            });
-        }
-
-        // Check all videos on load
-        Object.values(videos).forEach(checkVideoExists);
-
         // Handle orientation changes and resize
         function adjustVideoSize() {
             video.style.width = '100vw';
@@ -264,19 +237,10 @@
         // Initial size adjustment
         window.addEventListener('load', () => {
             adjustVideoSize();
-
-            // Force a reflow to ensure proper sizing on mobile
-            setTimeout(() => {
-                adjustVideoSize();
-            }, 500);
-
-            // Add debug mode if URL contains ?debug
-            if (window.location.search.includes('debug')) {
-                document.body.classList.add('debug-mode');
-            }
+            setTimeout(adjustVideoSize, 500);
         });
 
-        // Handle page visibility changes (mobile browsers)
+        // Handle page visibility changes
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 setTimeout(adjustVideoSize, 100);
