@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Video Player</title>
     <style>
         * {
@@ -11,112 +11,129 @@
             box-sizing: border-box;
         }
 
-        html, body {
-            width: 100%;
-            height: 100%;
+        body {
+            height: 100vh;
             overflow: hidden;
             background: #000;
             font-family: Arial, sans-serif;
-            position: fixed;
-            top: 0;
-            left: 0;
+            position: relative;
         }
 
         .video-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
+            position: relative;
+            width: 100vw;
+            height: 100vh;
         }
 
         #mainVideo {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             object-fit: cover;
             background: #000;
-            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
         }
 
-        .controls {
-            position: fixed;
+        /* Invisible touch zones */
+        .touch-zone {
+            position: absolute;
+            background: transparent;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            z-index: 10;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Top zone for smile - 50% of screen */
+        .touch-zone.smile {
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 50vh;
+        }
+
+        /* Bottom left zone for left - 25% of screen */
+        .touch-zone.left {
             bottom: 0;
             left: 0;
+            width: 50vw;
+            height: 50vh;
+        }
+
+        /* Bottom right zone for right - 25% of screen */
+        .touch-zone.right {
+            bottom: 0;
             right: 0;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            padding: 15px;
-            padding-bottom: calc(15px + env(safe-area-inset-bottom));
-            z-index: 1000;
-            background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
+            width: 50vw;
+            height: 50vh;
         }
 
-        .control-btn {
-            background: rgba(255, 255, 255, 0.25);
-            border: 2px solid rgba(255, 255, 255, 0.6);
+        /* Visual feedback on touch/click */
+        .touch-zone:active {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Optional: Show zone borders for debugging - remove this in production */
+        .debug-mode .touch-zone {
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+        }
+
+        /* Subtle indicator that appears briefly when video changes */
+        .video-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             color: white;
-            padding: 10px 20px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 14px;
+            font-size: 24px;
             font-weight: bold;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            transition: all 0.2s ease;
-            touch-action: manipulation;
-            user-select: none;
-            -webkit-user-select: none;
-            -webkit-tap-highlight-color: transparent;
-            flex: 1;
-            max-width: 100px;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            transition: opacity 0.3s ease;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
         }
 
-        .control-btn:active {
-            background: rgba(255, 255, 255, 0.4);
-            border-color: rgba(255, 255, 255, 0.9);
-            transform: scale(0.95);
+        .video-indicator.show {
+            opacity: 0.8;
         }
 
-        .control-btn.active {
-            background: rgba(255, 255, 255, 0.35);
-            border-color: rgba(255, 255, 255, 1);
-        }
-
-        @media (max-height: 600px) {
-            .controls {
-                padding: 10px;
-                padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        @media (orientation: landscape) {
+            /* Adjust zones for landscape if needed */
+            .touch-zone.smile {
+                height: 50vh;
             }
-
-            .control-btn {
-                padding: 8px 16px;
-                font-size: 12px;
+            .touch-zone.left,
+            .touch-zone.right {
+                height: 50vh;
             }
         }
     </style>
 </head>
 <body>
     <div class="video-container">
-        <video id="mainVideo" playsinline muted webkit-playsinline preload="auto">
+        <video id="mainVideo" muted playsinline preload="metadata" webkit-playsinline>
             Your browser does not support the video tag.
         </video>
-    </div>
 
-    <div class="controls">
-        <button class="control-btn" id="smileBtn">Smile</button>
-        <button class="control-btn" id="leftBtn">Left</button>
-        <button class="control-btn" id="rightBtn">Right</button>
+        <!-- Invisible touch zones -->
+        <button class="touch-zone smile" id="smileBtn" aria-label="Smile"></button>
+        <button class="touch-zone left" id="leftBtn" aria-label="Left"></button>
+        <button class="touch-zone right" id="rightBtn" aria-label="Right"></button>
+
+        <!-- Video indicator -->
+        <div class="video-indicator" id="indicator"></div>
     </div>
 
     <script>
-        console.log('Video Player Initialized');
-
         const video = document.getElementById('mainVideo');
         const smileBtn = document.getElementById('smileBtn');
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
+        const indicator = document.getElementById('indicator');
 
         // Video paths - replace these with your actual video paths
         const videos = {
@@ -125,186 +142,155 @@
             right: 'right.mp4'
         };
 
-        // Cache for preloaded video data
-        const videoCache = {};
         let currentVideo = null;
+        let indicatorTimeout = null;
 
-        // Debug logging
-        function debugLog(message, data) {
-            console.log(`[VideoPlayer] ${message}`, data || '');
-        }
-
-        // Preload videos by creating blob URLs
-        async function preloadAllVideos() {
-            debugLog('Starting video preload');
-
-            for (const [key, path] of Object.entries(videos)) {
-                try {
-                    // Create a test video element to check if file exists
-                    const testVideo = document.createElement('video');
-                    testVideo.src = path;
-                    testVideo.muted = true;
-                    testVideo.preload = 'metadata';
-
-                    await new Promise((resolve, reject) => {
-                        testVideo.addEventListener('loadedmetadata', () => {
-                            debugLog(`Video ${key} metadata loaded successfully`);
-                            videoCache[key] = path;
-                            resolve();
-                        });
-
-                        testVideo.addEventListener('error', () => {
-                            debugLog(`Error loading video ${key} from path: ${path}`);
-                            reject();
-                        });
-
-                        // Timeout after 5 seconds
-                        setTimeout(() => {
-                            debugLog(`Timeout loading video ${key}`);
-                            resolve();
-                        }, 5000);
-                    });
-                } catch (error) {
-                    debugLog(`Failed to preload ${key}: ${error.message}`);
-                }
+        // Show indicator briefly
+        function showIndicator(text) {
+            if (indicatorTimeout) {
+                clearTimeout(indicatorTimeout);
             }
+            indicator.textContent = text;
+            indicator.classList.add('show');
 
-            debugLog('Video preload complete', videoCache);
-        }
-
-        // Remove active class from all buttons
-        function clearActiveButtons() {
-            [smileBtn, leftBtn, rightBtn].forEach(btn => btn.classList.remove('active'));
+            indicatorTimeout = setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 1000);
         }
 
         // Play video and freeze at last frame
-        function playVideo(videoType, button) {
-            debugLog(`Playing video: ${videoType}`);
+        function playVideo(videoType) {
+            // Show indicator
+            const labels = {
+                smile: '😊',
+                left: '←',
+                right: '→'
+            };
+            showIndicator(labels[videoType] || videoType.toUpperCase());
 
-            clearActiveButtons();
-            button.classList.add('active');
-
-            // Reset and load new video
-            const videoPath = videoCache[videoType] || videos[videoType];
-            debugLog(`Video path: ${videoPath}`);
-
-            video.pause();
-            video.src = videoPath;
+            // Load and play video
+            video.src = videos[videoType];
+            video.load();
             video.currentTime = 0;
 
-            // Load and play
-            video.load();
-
-            // Try to play after a short delay
+            // Add a small delay to ensure video is loaded on mobile
             setTimeout(() => {
-                video.play()
-                    .then(() => {
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
                         currentVideo = videoType;
-                        debugLog(`Video ${videoType} playing successfully`);
-                    })
-                    .catch(error => {
-                        debugLog(`Error playing video: ${error.message}`);
-                        // Try again with explicit muted
+                    }).catch(err => {
+                        console.error('Error playing video:', err);
+                        // Fallback for autoplay restrictions
                         video.muted = true;
-                        video.play().catch(e => {
-                            debugLog(`Second play attempt failed: ${e.message}`);
-                        });
+                        video.play();
                     });
-            }, 50);
+                }
+            }, 100);
         }
 
         // Freeze video at last frame when it ends
         video.addEventListener('ended', () => {
-            debugLog('Video ended, freezing at last frame');
-            // Pause at last frame instead of seeking
-            video.pause();
-            if (video.duration) {
-                video.currentTime = video.duration - 0.1;
-            }
+            video.currentTime = video.duration;
         });
 
-        // Log video events for debugging
-        video.addEventListener('loadstart', () => debugLog('Video loadstart'));
-        video.addEventListener('loadeddata', () => debugLog('Video loadeddata'));
-        video.addEventListener('canplay', () => debugLog('Video canplay'));
-        video.addEventListener('error', (e) => debugLog('Video error', e));
+        // Prevent video controls
+        video.addEventListener('loadedmetadata', () => {
+            video.controls = false;
+        });
 
-        // Button event handlers
-        function setupButton(button, videoType) {
-            // Single handler for both touch and click
-            const handleInteraction = (e) => {
+        // Button event listeners - use both click and touchend for mobile
+        function addButtonListener(button, videoType) {
+            const handler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                debugLog(`Button pressed: ${videoType}`);
-                playVideo(videoType, button);
+                playVideo(videoType);
             };
 
-            // Use pointer events for better mobile support
-            button.addEventListener('pointerdown', handleInteraction);
-
-            // Fallback for older browsers
-            if (!window.PointerEvent) {
-                button.addEventListener('touchstart', handleInteraction);
-                button.addEventListener('click', handleInteraction);
-            }
+            button.addEventListener('click', handler);
+            button.addEventListener('touchend', handler);
         }
 
-        setupButton(smileBtn, 'smile');
-        setupButton(leftBtn, 'left');
-        setupButton(rightBtn, 'right');
+        addButtonListener(smileBtn, 'smile');
+        addButtonListener(leftBtn, 'left');
+        addButtonListener(rightBtn, 'right');
 
-        // Prevent default video controls
+        // Prevent video from showing controls on touch
+        video.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        });
+
         video.addEventListener('click', (e) => {
             e.preventDefault();
-            e.stopPropagation();
         });
 
-        // Initialize on page load
-        window.addEventListener('DOMContentLoaded', () => {
-            debugLog('DOM Content Loaded');
-
-            // Set initial video properties
-            video.controls = false;
-            video.muted = true;
-            video.playsInline = true;
-            video.setAttribute('webkit-playsinline', 'true');
-            video.setAttribute('playsinline', 'true');
-
-            // Start preloading videos
-            preloadAllVideos();
-        });
-
-        // Additional initialization for safety
-        window.addEventListener('load', () => {
-            debugLog('Window fully loaded');
-
-            // Double-check video setup
-            if (!Object.keys(videoCache).length) {
-                preloadAllVideos();
-            }
-        });
-
-        // Handle page visibility
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                debugLog('Page became visible');
-            }
-        });
-
-        // Prevent scrolling and zooming
-        document.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        // Prevent double-tap zoom
+        // Handle double tap to prevent zoom
         let lastTouchEnd = 0;
-        document.addEventListener('touchend', (event) => {
-            const now = Date.now();
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
             if (now - lastTouchEnd <= 300) {
                 event.preventDefault();
             }
             lastTouchEnd = now;
         }, false);
+
+        // Check if videos exist (for debugging)
+        function checkVideoExists(src) {
+            const video = document.createElement('video');
+            video.src = src;
+            video.addEventListener('loadstart', () => {
+                console.log('Video loading:', src);
+            });
+            video.addEventListener('error', () => {
+                console.error('Video not found:', src);
+            });
+        }
+
+        // Check all videos on load
+        Object.values(videos).forEach(checkVideoExists);
+
+        // Handle orientation changes and resize
+        function adjustVideoSize() {
+            video.style.width = '100vw';
+            video.style.height = '100vh';
+        }
+
+        window.addEventListener('orientationchange', () => {
+            setTimeout(adjustVideoSize, 100);
+        });
+
+        window.addEventListener('resize', adjustVideoSize);
+
+        // Initial size adjustment
+        window.addEventListener('load', () => {
+            adjustVideoSize();
+
+            // Force a reflow to ensure proper sizing on mobile
+            setTimeout(() => {
+                adjustVideoSize();
+            }, 500);
+
+            // Add debug mode if URL contains ?debug
+            if (window.location.search.includes('debug')) {
+                document.body.classList.add('debug-mode');
+            }
+        });
+
+        // Handle page visibility changes (mobile browsers)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                setTimeout(adjustVideoSize, 100);
+            }
+        });
+
+        // Prevent scrolling and zooming on mobile
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('gesturestart', (e) => {
+            e.preventDefault();
+        });
     </script>
 </body>
 </html>
