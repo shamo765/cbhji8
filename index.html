@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
     <title>Video Player</title>
     <style>
         * {
@@ -11,81 +11,83 @@
             box-sizing: border-box;
         }
 
-        body {
-            height: 100vh;
+        html, body {
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             background: #000;
             font-family: Arial, sans-serif;
-        }
-
-        .video-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
-
-        #mainVideo {
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            background: #000;
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
         }
 
+        .video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+
+        #mainVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+            display: block;
+        }
+
         .controls {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
             display: flex;
-            gap: 20px;
-            z-index: 10;
+            justify-content: center;
+            gap: 10px;
+            padding: 15px;
+            padding-bottom: calc(15px + env(safe-area-inset-bottom));
+            z-index: 1000;
+            background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
         }
 
         .control-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.6);
             color: white;
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-radius: 25px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
             touch-action: manipulation;
             user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            flex: 1;
+            max-width: 100px;
         }
 
-        .control-btn:hover,
         .control-btn:active {
-            background: rgba(255, 255, 255, 0.3);
-            border-color: rgba(255, 255, 255, 0.8);
-            transform: scale(1.05);
+            background: rgba(255, 255, 255, 0.4);
+            border-color: rgba(255, 255, 255, 0.9);
+            transform: scale(0.95);
         }
 
         .control-btn.active {
-            background: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.35);
             border-color: rgba(255, 255, 255, 1);
-        }
-
-        @media (max-width: 480px) {
-            .controls {
-                bottom: 15px;
-                gap: 15px;
-            }
-
-            .control-btn {
-                padding: 10px 20px;
-                font-size: 14px;
-            }
         }
 
         @media (max-height: 600px) {
             .controls {
-                bottom: 10px;
+                padding: 10px;
+                padding-bottom: calc(10px + env(safe-area-inset-bottom));
             }
 
             .control-btn {
@@ -97,44 +99,77 @@
 </head>
 <body>
     <div class="video-container">
-        <video id="mainVideo" muted playsinline preload="none" webkit-playsinline>
+        <video id="mainVideo" playsinline muted webkit-playsinline preload="auto">
             Your browser does not support the video tag.
         </video>
+    </div>
 
-        <div class="controls">
-            <button class="control-btn" id="smileBtn">Smile</button>
-            <button class="control-btn" id="leftBtn">Left</button>
-            <button class="control-btn" id="rightBtn">Right</button>
-        </div>
+    <div class="controls">
+        <button class="control-btn" id="smileBtn">Smile</button>
+        <button class="control-btn" id="leftBtn">Left</button>
+        <button class="control-btn" id="rightBtn">Right</button>
     </div>
 
     <script>
+        console.log('Video Player Initialized');
+
         const video = document.getElementById('mainVideo');
         const smileBtn = document.getElementById('smileBtn');
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
 
-        // Video paths
+        // Video paths - replace these with your actual video paths
         const videos = {
             smile: 'smile.mp4',
             left: 'left.mp4',
             right: 'right.mp4'
         };
 
-        // Preloaded video elements
-        const preloadedVideos = {};
+        // Cache for preloaded video data
+        const videoCache = {};
         let currentVideo = null;
 
-        // Preload all videos on page load
-        function preloadVideos() {
-            Object.keys(videos).forEach(key => {
-                const videoElement = document.createElement('video');
-                videoElement.src = videos[key];
-                videoElement.preload = 'auto';
-                videoElement.muted = true;
-                videoElement.load();
-                preloadedVideos[key] = videoElement;
-            });
+        // Debug logging
+        function debugLog(message, data) {
+            console.log(`[VideoPlayer] ${message}`, data || '');
+        }
+
+        // Preload videos by creating blob URLs
+        async function preloadAllVideos() {
+            debugLog('Starting video preload');
+
+            for (const [key, path] of Object.entries(videos)) {
+                try {
+                    // Create a test video element to check if file exists
+                    const testVideo = document.createElement('video');
+                    testVideo.src = path;
+                    testVideo.muted = true;
+                    testVideo.preload = 'metadata';
+
+                    await new Promise((resolve, reject) => {
+                        testVideo.addEventListener('loadedmetadata', () => {
+                            debugLog(`Video ${key} metadata loaded successfully`);
+                            videoCache[key] = path;
+                            resolve();
+                        });
+
+                        testVideo.addEventListener('error', () => {
+                            debugLog(`Error loading video ${key} from path: ${path}`);
+                            reject();
+                        });
+
+                        // Timeout after 5 seconds
+                        setTimeout(() => {
+                            debugLog(`Timeout loading video ${key}`);
+                            resolve();
+                        }, 5000);
+                    });
+                } catch (error) {
+                    debugLog(`Failed to preload ${key}: ${error.message}`);
+                }
+            }
+
+            debugLog('Video preload complete', videoCache);
         }
 
         // Remove active class from all buttons
@@ -144,112 +179,132 @@
 
         // Play video and freeze at last frame
         function playVideo(videoType, button) {
+            debugLog(`Playing video: ${videoType}`);
+
             clearActiveButtons();
             button.classList.add('active');
 
-            // Set video source from preloaded videos
-            video.src = preloadedVideos[videoType].src;
-            video.load();
+            // Reset and load new video
+            const videoPath = videoCache[videoType] || videos[videoType];
+            debugLog(`Video path: ${videoPath}`);
+
+            video.pause();
+            video.src = videoPath;
             video.currentTime = 0;
 
-            // Add a small delay to ensure video is loaded
+            // Load and play
+            video.load();
+
+            // Try to play after a short delay
             setTimeout(() => {
-                const playPromise = video.play();
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
+                video.play()
+                    .then(() => {
                         currentVideo = videoType;
-                    }).catch(err => {
-                        // Fallback for autoplay restrictions
+                        debugLog(`Video ${videoType} playing successfully`);
+                    })
+                    .catch(error => {
+                        debugLog(`Error playing video: ${error.message}`);
+                        // Try again with explicit muted
                         video.muted = true;
-                        video.play();
+                        video.play().catch(e => {
+                            debugLog(`Second play attempt failed: ${e.message}`);
+                        });
                     });
-                }
-            }, 100);
+            }, 50);
         }
 
         // Freeze video at last frame when it ends
         video.addEventListener('ended', () => {
-            video.currentTime = video.duration;
+            debugLog('Video ended, freezing at last frame');
+            // Pause at last frame instead of seeking
+            video.pause();
+            if (video.duration) {
+                video.currentTime = video.duration - 0.1;
+            }
         });
 
-        // Prevent video controls
-        video.addEventListener('loadedmetadata', () => {
-            video.controls = false;
-        });
+        // Log video events for debugging
+        video.addEventListener('loadstart', () => debugLog('Video loadstart'));
+        video.addEventListener('loadeddata', () => debugLog('Video loadeddata'));
+        video.addEventListener('canplay', () => debugLog('Video canplay'));
+        video.addEventListener('error', (e) => debugLog('Video error', e));
 
-        // Button event listeners - use both click and touchend for mobile
-        function addButtonListener(button, videoType) {
-            const handler = (e) => {
+        // Button event handlers
+        function setupButton(button, videoType) {
+            // Single handler for both touch and click
+            const handleInteraction = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                debugLog(`Button pressed: ${videoType}`);
                 playVideo(videoType, button);
             };
 
-            button.addEventListener('click', handler);
-            button.addEventListener('touchend', handler);
+            // Use pointer events for better mobile support
+            button.addEventListener('pointerdown', handleInteraction);
+
+            // Fallback for older browsers
+            if (!window.PointerEvent) {
+                button.addEventListener('touchstart', handleInteraction);
+                button.addEventListener('click', handleInteraction);
+            }
         }
 
-        addButtonListener(smileBtn, 'smile');
-        addButtonListener(leftBtn, 'left');
-        addButtonListener(rightBtn, 'right');
+        setupButton(smileBtn, 'smile');
+        setupButton(leftBtn, 'left');
+        setupButton(rightBtn, 'right');
 
-        // Prevent video from showing controls on touch
-        video.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-        });
-
+        // Prevent default video controls
         video.addEventListener('click', (e) => {
             e.preventDefault();
+            e.stopPropagation();
         });
 
-        // Handle double tap to prevent zoom
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            debugLog('DOM Content Loaded');
+
+            // Set initial video properties
+            video.controls = false;
+            video.muted = true;
+            video.playsInline = true;
+            video.setAttribute('webkit-playsinline', 'true');
+            video.setAttribute('playsinline', 'true');
+
+            // Start preloading videos
+            preloadAllVideos();
+        });
+
+        // Additional initialization for safety
+        window.addEventListener('load', () => {
+            debugLog('Window fully loaded');
+
+            // Double-check video setup
+            if (!Object.keys(videoCache).length) {
+                preloadAllVideos();
+            }
+        });
+
+        // Handle page visibility
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                debugLog('Page became visible');
+            }
+        });
+
+        // Prevent scrolling and zooming
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        // Prevent double-tap zoom
         let lastTouchEnd = 0;
-        document.addEventListener('touchend', function (event) {
-            const now = (new Date()).getTime();
+        document.addEventListener('touchend', (event) => {
+            const now = Date.now();
             if (now - lastTouchEnd <= 300) {
                 event.preventDefault();
             }
             lastTouchEnd = now;
         }, false);
-
-        // Handle orientation changes and resize
-        function adjustVideoSize() {
-            video.style.width = '100vw';
-            video.style.height = '100vh';
-        }
-
-        window.addEventListener('orientationchange', () => {
-            setTimeout(adjustVideoSize, 100);
-        });
-
-        window.addEventListener('resize', adjustVideoSize);
-
-        // Initial setup on page load
-        window.addEventListener('load', () => {
-            adjustVideoSize();
-            preloadVideos();
-
-            // Force a reflow to ensure proper sizing on mobile
-            setTimeout(() => {
-                adjustVideoSize();
-            }, 500);
-        });
-
-        // Handle page visibility changes (mobile browsers)
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                setTimeout(adjustVideoSize, 100);
-            }
-        });
-
-        // Prevent scrolling and zooming on mobile
-        document.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('gesturestart', (e) => {
-            e.preventDefault();
-        });
     </script>
 </body>
 </html>
