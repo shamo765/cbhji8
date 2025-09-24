@@ -97,10 +97,27 @@
         // Smoothly switch to a new video: preload in bufferEl, keep mainEl visible until buffer is ready
         function playVideoSmooth(videoType) {
             if (loading) return; // simple debounce
-            if (videoType === currentVideoType) return; // already playing
 
-            loading = true;
+            // If the requested type is already the currently-visible one,
+            // restart it immediately instead of doing a buffer swap.
+            if (videoType === currentVideoType) {
+                try {
+                    // restart from beginning and play (both videos are muted so autoplay should work)
+                    mainEl.currentTime = 0;
+                    const p = mainEl.play();
+                    if (p !== undefined) {
+                        p.catch(err => {
+                            console.warn('Play attempt failed when restarting same video:', err);
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Error while restarting the same video:', e);
+                }
+                return;
+            }
+
             syncMuted();
+            loading = true;
 
             // keep the currently visible mainEl as-is so its last frame remains visible
             // load new source into bufferEl (the hidden layer)
